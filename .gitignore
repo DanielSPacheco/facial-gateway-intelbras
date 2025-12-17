@@ -1,5 +1,6 @@
 # Env
 .env
+.env.*   # opcional, mas útil (ex: .env.local)
 
 # Node
 node_modules/
@@ -11,4 +12,4 @@ yarn-error.log*
 
 # OS
 .DS_Store
-Thumbs.db
+Thumbs.db  
