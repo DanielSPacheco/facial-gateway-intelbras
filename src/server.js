@@ -20,15 +20,20 @@ function startServer() {
       name: "facial-gateway",
       config: { ip: cfg.FACIAL_IP, channel: cfg.FACIAL_CHANNEL },
       routes: {
-        door: ["/facial/door/open"],
+        door: ["POST /facial/door/open"],
         users: [
           "GET /facial/user/:userID",
           "POST /facial/user/create",
           "POST /facial/user/update",
           "POST /facial/user/delete",
         ],
-        cards: ["(coming) POST /facial/card/add", "(coming) POST /facial/card/delete"],
-        face: ["(coming) POST /facial/face/upload"],
+        cards: [
+          "POST /facial/card/add",
+          "POST /facial/card/delete",
+        ],
+        face: [
+          "POST /facial/face/upload (multipart/form-data: userID + file)",
+        ],
       },
     });
   });
