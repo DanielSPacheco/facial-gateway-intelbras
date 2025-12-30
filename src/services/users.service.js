@@ -1,17 +1,21 @@
 const { rpc2Login, rpc2Call } = require("../clients/rpc2.client");
 
-// payload padrão baseado no doFind real do seu device
-function buildUser({ userID, userName, password, authority = 2 }) {
-  return {
-    Authority: authority,
+/**
+ * Monta payload padrão compatível com AccessUser.insertMulti/updateMulti
+ * - Mantém o "shape" que o device costuma aceitar
+ * - Inclui CardNo somente se vier preenchido
+ */
+function buildUser({ userID, userName, password, authority, cardNo }) {
+  const userObj = {
+    Authority: Number(authority ?? 2),
     CitizenIDNo: "",
     Doors: [0],
     FirstEnterDoors: [-1],
     IsFirstEnter: false,
-    Password: password || "1234",
+    Password: String(password || "1234"),
     SpecialDaysSchedule: [255],
     TimeSections: [255],
-    UseTime: 200,
+    UserTime: 200, // ✅ (no seu snippet estava UseTime)
     UserID: String(userID),
     UserName: String(userName),
     UserStatus: 0,
@@ -20,15 +24,26 @@ function buildUser({ userID, userName, password, authority = 2 }) {
     ValidFrom: "1970-01-01 00:00:00",
     ValidTo: "2037-12-31 23:59:59",
   };
+
+  // ✅ Tag/Cartão (decimal) — só envia se vier definido
+  if (cardNo !== undefined && cardNo !== null && String(cardNo).trim() !== "") {
+    userObj.CardNo = String(cardNo);
+  }
+
+  return userObj;
 }
 
-async function getUser(cfg, userID) {
-  const session = await rpc2Login({
+async function login(cfg) {
+  return rpc2Login({
     ip: cfg.FACIAL_IP,
     user: cfg.FACIAL_USER,
     pass: cfg.FACIAL_PASS,
     timeoutMs: cfg.TIMEOUT_MS,
   });
+}
+
+async function getUser(cfg, userID) {
+  const session = await login(cfg);
 
   const start = await rpc2Call({
     ip: cfg.FACIAL_IP,
@@ -40,6 +55,9 @@ async function getUser(cfg, userID) {
   });
 
   const token = start?.params?.Token;
+  if (!token) {
+    return { ok: false, error: { message: "startFind_failed" }, raw: start };
+  }
 
   const found = await rpc2Call({
     ip: cfg.FACIAL_IP,
@@ -60,18 +78,22 @@ async function getUser(cfg, userID) {
   });
 
   const info = found?.params?.Info?.[0] || null;
+
+  if (!info) {
+    return { ok: false, error: { message: "user_not_found" }, raw: found };
+  }
+
   return { ok: true, data: info };
 }
 
-async function createUser(cfg, { userID, userName, password, authority }) {
-  const session = await rpc2Login({
-    ip: cfg.FACIAL_IP,
-    user: cfg.FACIAL_USER,
-    pass: cfg.FACIAL_PASS,
-    timeoutMs: cfg.TIMEOUT_MS,
-  });
+async function createUser(cfg, { userID, userName, password, authority, cardNo }) {
+  if (!userID || !userName) {
+    return { ok: false, error: { message: "Campos obrigatórios: userID, userName" } };
+  }
 
-  const userObj = buildUser({ userID, userName, password, authority });
+  const session = await login(cfg);
+
+  const userObj = buildUser({ userID, userName, password, authority, cardNo });
 
   const r = await rpc2Call({
     ip: cfg.FACIAL_IP,
@@ -85,23 +107,51 @@ async function createUser(cfg, { userID, userName, password, authority }) {
   if (r?.result !== true) {
     return { ok: false, error: r?.error || { message: "create_failed" }, raw: r };
   }
-  return { ok: true, created: true, method: "AccessUser.insertMulti", userID: String(userID) };
+
+  return {
+    ok: true,
+    created: true,
+    method: "AccessUser.insertMulti",
+    userID: String(userID),
+  };
 }
 
-async function updateUser(cfg, { userID, userName }) {
-  const session = await rpc2Login({
-    ip: cfg.FACIAL_IP,
-    user: cfg.FACIAL_USER,
-    pass: cfg.FACIAL_PASS,
-    timeoutMs: cfg.TIMEOUT_MS,
-  });
+/**
+ * Atualiza usuário mantendo o payload atual do device.
+ * Você pode passar:
+ * - userName
+ * - password
+ * - authority
+ * - cardNo  (TAG decimal)
+ *
+ * O método:
+ * 1) busca o user atual no device
+ * 2) altera apenas os campos enviados
+ * 3) envia updateMulti com o objeto completo
+ */
+async function updateUser(cfg, { userID, userName, password, authority, cardNo }) {
+  if (!userID) {
+    return { ok: false, error: { message: "Campo obrigatório: userID" } };
+  }
 
-  // pega user atual e só troca o nome
+  const session = await login(cfg);
+
   const current = await getUser(cfg, userID);
-  const base = current?.data;
-  if (!base) return { ok: false, error: { message: "user_not_found" } };
+  if (!current.ok) return current;
 
-  base.UserName = String(userName);
+  const base = current.data;
+
+  if (userName !== undefined) base.UserName = String(userName);
+  if (password !== undefined) base.Password = String(password);
+  if (authority !== undefined) base.Authority = Number(authority);
+
+  // ✅ Tag/Cartão
+  if (cardNo !== undefined && cardNo !== null && String(cardNo).trim() !== "") {
+    base.CardNo = String(cardNo);
+  }
+
+  // Garantir que UserID está consistente
+  base.UserID = String(userID);
 
   const r = await rpc2Call({
     ip: cfg.FACIAL_IP,
@@ -115,16 +165,32 @@ async function updateUser(cfg, { userID, userName }) {
   if (r?.result !== true) {
     return { ok: false, error: r?.error || { message: "update_failed" }, raw: r };
   }
-  return { ok: true, updated: true, method: "AccessUser.updateMulti", userID: String(userID) };
+
+  return {
+    ok: true,
+    updated: true,
+    method: "AccessUser.updateMulti",
+    userID: String(userID),
+  };
+}
+
+/**
+ * Atalho específico para vincular cartão (TAG) ao usuário.
+ * Internamente usa updateUser para manter o objeto completo.
+ */
+async function assignCard(cfg, { userID, cardNo }) {
+  if (!userID || !cardNo) {
+    return { ok: false, error: { message: "Campos obrigatórios: userID, cardNo" } };
+  }
+  return updateUser(cfg, { userID, cardNo });
 }
 
 async function deleteUser(cfg, { userID }) {
-  const session = await rpc2Login({
-    ip: cfg.FACIAL_IP,
-    user: cfg.FACIAL_USER,
-    pass: cfg.FACIAL_PASS,
-    timeoutMs: cfg.TIMEOUT_MS,
-  });
+  if (!userID) {
+    return { ok: false, error: { message: "Campo obrigatório: userID" } };
+  }
+
+  const session = await login(cfg);
 
   const r = await rpc2Call({
     ip: cfg.FACIAL_IP,
@@ -138,7 +204,20 @@ async function deleteUser(cfg, { userID }) {
   if (r?.result !== true) {
     return { ok: false, error: r?.error || { message: "delete_failed" }, raw: r };
   }
-  return { ok: true, deleted: true, method: "AccessUser.removeMulti", userID: String(userID) };
+
+  return {
+    ok: true,
+    deleted: true,
+    method: "AccessUser.removeMulti",
+    userID: String(userID),
+  };
 }
 
-module.exports = { getUser, createUser, updateUser, deleteUser };
+module.exports = {
+  buildUser,
+  getUser,
+  createUser,
+  updateUser,
+  assignCard,
+  deleteUser,
+};
