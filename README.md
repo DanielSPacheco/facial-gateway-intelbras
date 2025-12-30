@@ -48,12 +48,7 @@ FACIAL_PASS=your_password_here
 FACIAL_CHANNEL=1
 PORT=3000
 
-## ▶️ Run the server
-
-- Install dependencies:
-
-```bash
-npm install
+```
 
 
 ## ▶️ Run the server
@@ -63,17 +58,30 @@ npm install
 ```bash
 npm install
 
+```
+
+## ▶️ Run the server
+
+- Install dependencies:
+
+```bash
+npm install
+
+```
 
 ## Run the server
 
 ```bash
 curl http://localhost:3000/health
 
+```
+
 ## Door control
 
 ```bash
 curl -X POST http://localhost:3000/facial/door/open
 
+```
 
 ## User-Create
 
@@ -87,12 +95,14 @@ curl -X POST http://localhost:3000/facial/user/create \
     "authority": 2
   }'
 
+```
 
 ## Users-Get by ID
 
 ```bash
 curl http://localhost:3000/facial/user/888
 
+```
 
 ##User-Uptade
 ```bash
@@ -103,7 +113,9 @@ curl -X POST http://localhost:3000/facial/user/update \
     "userName": "User 888 RENAMED"
   }'
 
-##User-Delete
+  ```
+
+## User-Delete
 
 ```bash
 curl -X POST http://localhost:3000/facial/user/delete \
@@ -112,8 +124,9 @@ curl -X POST http://localhost:3000/facial/user/delete \
     "userID": "888"
   }'
 
+```
 
-##Cards/Tags-Assign
+## Cards/Tags-Assign
 
 ```bash
 curl -X POST http://localhost:3000/facial/card/add \
@@ -123,6 +136,7 @@ curl -X POST http://localhost:3000/facial/card/add \
     "cardNo": "3333333333333333"
   }'
 
+```
 
 ## Face enrollment (Working)
 
@@ -135,6 +149,8 @@ No heavy shadows or sunglasses
 Final request size <= 14 KB
 Typical resolution 160–220 px
 
+```
+
 ## Face enrollment-Upload file
 
 ```bash
@@ -142,8 +158,9 @@ curl -X POST http://localhost:3000/facial/face/upload \
   -F userID=777 \
   -F file=@/path/to/photo.jpg
 
+```
 
-##Face enrollment-Upload Base64
+## Face enrollment-Upload Base64
 
 ```bash
 curl -X POST http://localhost:3000/facial/face/uploadBase64 \
@@ -153,10 +170,10 @@ curl -X POST http://localhost:3000/facial/face/uploadBase64 \
     "photoData": "data:image/jpg;base64,/9j/4AAQSkZJRgABAQ..."
   }'
 
+```
 
 ## Common erros
 
-```bash
 Request length error
 Payload format not accepted by firmware
 Not only size-related
@@ -164,6 +181,7 @@ Not only size-related
 Batch Process Error
 Face not detected or poor quality
 Improve lighting and face position
+
 
 ## API Summary
 
@@ -182,7 +200,6 @@ Improve lighting and face position
 
 ## Design Notes
 
-```bash
 RPC2 session handled entirely by backend
 No browser cookies required
 Users, cards, and faces are independent entities
@@ -190,9 +207,8 @@ Automatic image preprocessing for firmware compatibility
 Safe for Raspberry Pi / embedded gateway usage
 
 
-##Status
+## Status
 
-```bash
 RPC2 session handled entirely by backend
 No browser cookies required
 Users, cards, and faces are independent entities
