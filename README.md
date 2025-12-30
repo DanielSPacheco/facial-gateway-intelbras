@@ -1,56 +1,83 @@
-Facial Gateway – Intelbras RPC API
-Node.js (Express) gateway to integrate with Intelbras facial access controllers using
-RPC2 / RPC2_Login / RPC3_Loadfile.
-This project exposes a clean HTTP API to control Intelbras facial devices without relying on browser sessions.
-🚀 Features
-✅ Open door
-✅ Create user (AccessUser.insertMulti)
-✅ Update user (AccessUser.updateMulti)
-✅ Delete user (AccessUser.removeMulti)
-✅ Get user by ID
-✅ Card / Tag assignment (AccessCard.insertMulti)
-🔜 Face image upload (RPC3_Loadfile)
+# Facial Gateway – Intelbras RPC API
 
-🧱 Tech Stack
-Node.js 18+
-Express
-Axios
-Intelbras RPC API (RPC2 / RPC2_Login)
+Node.js (Express) gateway to integrate with **Intelbras facial access controllers** using  
+**RPC2 / RPC2_Login / RPC3_Loadfile**.
 
-⚙️ Setup
-Requirements
-Node.js 18+
-Intelbras facial controller reachable on the network
-Admin credentials for the device
+This project exposes a clean HTTP API to control Intelbras facial devices **without relying on browser sessions, SDKs, or cookies**.
 
-Environment variables
-Create a .env file in the project root:
+---
 
+## 🚀 Features
+
+- ✅ Open door  
+- ✅ Create user (`AccessUser.insertMulti`)  
+- ✅ Update user (`AccessUser.updateMulti`)  
+- ✅ Delete user (`AccessUser.removeMulti`)  
+- ✅ Get user by ID  
+- ✅ Card / Tag assignment (`AccessCard.insertMulti`)  
+- ✅ Face image upload (**WORKING**)  
+
+---
+
+## 🧱 Tech Stack
+
+- Node.js 18+
+- Express
+- Axios
+- Sharp (image preprocessing)
+- Intelbras RPC API (`RPC2 / RPC2_Login / RPC3_Loadfile`)
+
+---
+
+## ⚙️ Setup
+
+### Requirements
+
+- Node.js 18+
+- Intelbras facial controller reachable on the network
+- Admin credentials for the device
+
+### Environment variables
+
+Create a `.env` file in the project root:
+
+```env
 FACIAL_IP=192.168.3.227
 FACIAL_USER=admin
 FACIAL_PASS=your_password_here
 FACIAL_CHANNEL=1
 PORT=3000
 
+## ▶️ Run the server
 
-▶️ Run the server
+- Install dependencies:
 
+```bash
 npm install
-node index.js
 
-Health check:
 
+## ▶️ Run the server
+
+- Install dependencies:
+
+```bash
+npm install
+
+
+## Run the server
+
+```bash
 curl http://localhost:3000/health
 
-🔐 Door Control
-Open door
+## Door control
 
+```bash
 curl -X POST http://localhost:3000/facial/door/open
 
 
-👤 Users
-Create user
+## User-Create
 
+```bash
 curl -X POST http://localhost:3000/facial/user/create \
   -H "Content-Type: application/json" \
   -d '{
@@ -61,13 +88,14 @@ curl -X POST http://localhost:3000/facial/user/create \
   }'
 
 
-  Get user by ID
+## Users-Get by ID
 
+```bash
 curl http://localhost:3000/facial/user/888
 
 
-Update user
-
+##User-Uptade
+```bash
 curl -X POST http://localhost:3000/facial/user/update \
   -H "Content-Type: application/json" \
   -d '{
@@ -75,9 +103,9 @@ curl -X POST http://localhost:3000/facial/user/update \
     "userName": "User 888 RENAMED"
   }'
 
+##User-Delete
 
-Delete user
-
+```bash
 curl -X POST http://localhost:3000/facial/user/delete \
   -H "Content-Type: application/json" \
   -d '{
@@ -85,9 +113,9 @@ curl -X POST http://localhost:3000/facial/user/delete \
   }'
 
 
-🪪 Cards / Tags (RFID)
-Assign card to user ✅
+##Cards/Tags-Assign
 
+```bash
 curl -X POST http://localhost:3000/facial/card/add \
   -H "Content-Type: application/json" \
   -d '{
@@ -95,35 +123,78 @@ curl -X POST http://localhost:3000/facial/card/add \
     "cardNo": "3333333333333333"
   }'
 
-ℹ️ Cards are managed as a separate entity using AccessCard.insertMulti.
-Browser cookies are not used — sessions are handled via RPC2 login.
 
-📌 API Summary
+## Face enrollment (Working)
 
-| Feature     | Endpoint               | Method |
-| ----------- | ---------------------- | ------ |
-| Health      | `/health`              | GET    |
-| Open door   | `/facial/door/open`    | POST   |
-| Create user | `/facial/user/create`  | POST   |
-| Get user    | `/facial/user/:userID` | GET    |
-| Update user | `/facial/user/update`  | POST   |
-| Delete user | `/facial/user/delete`  | POST   |
-| Assign card | `/facial/card/add`     | POST   |
-| Upload face | `/facial/face/upload`  | 🔜     |
+```bash
+JPG format
+One person only
+Frontal face
+Good lighting
+No heavy shadows or sunglasses
+Final request size <= 14 KB
+Typical resolution 160–220 px
+
+## Face enrollment-Upload file
+
+```bash
+curl -X POST http://localhost:3000/facial/face/upload \
+  -F userID=777 \
+  -F file=@/path/to/photo.jpg
 
 
-🧠 Design Notes
-RPC2 session is handled by backend (rpc2Login)
-No dependency on browser cookies
-Users and cards are separate entities
+##Face enrollment-Upload Base64
+
+```bash
+curl -X POST http://localhost:3000/facial/face/uploadBase64 \
+  -H "Content-Type: application/json" \
+  -d '{
+    "userID": "777",
+    "photoData": "data:image/jpg;base64,/9j/4AAQSkZJRgABAQ..."
+  }'
+
+
+## Common erros
+
+```bash
+Request length error
+Payload format not accepted by firmware
+Not only size-related
+
+Batch Process Error
+Face not detected or poor quality
+Improve lighting and face position
+
+## API Summary
+
+| Feature     | Endpoint                    | Method |
+| ----------- | --------------------------- | ------ |
+| Health      | `/health`                   | GET    |
+| Open door   | `/facial/door/open`         | POST   |
+| Create user | `/facial/user/create`       | POST   |
+| Get user    | `/facial/user/:userID`      | GET    |
+| Update user | `/facial/user/update`       | POST   |
+| Delete user | `/facial/user/delete`       | POST   |
+| Assign card | `/facial/card/add`          | POST   |
+| Upload face | `/facial/face/upload`       | POST   |
+| Upload face | `/facial/face/uploadBase64` | POST   |
+
+
+## Design Notes
+
+```bash
+RPC2 session handled entirely by backend
+No browser cookies required
+Users, cards, and faces are independent entities
+Automatic image preprocessing for firmware compatibility
 Safe for Raspberry Pi / embedded gateway usage
-Ready for UI (web or mobile) on top
 
 
-✅ Status
-MVP functional and stable
-Door + Users + Cards working end-to-end.
+##Status
 
-
-
-
+```bash
+RPC2 session handled entirely by backend
+No browser cookies required
+Users, cards, and faces are independent entities
+Automatic image preprocessing for firmware compatibility
+Safe for Raspberry Pi / embedded gateway usage
