@@ -19,6 +19,61 @@ This project exposes a clean HTTP API to control Intelbras facial devices **with
 
 ---
 
+## 🚀 Distributed Execution
+
+- ✅ Supabase-based job queue
+- ✅ Local agent execution (safe for LAN / Raspberry Pi)
+- ✅ Multi-site / multi-device ready
+- ✅ No inbound ports required on client network 
+
+---
+
+## Architecture Overview
+
+
+```text
+┌─────────────┐        ┌─────────────────┐        ┌──────────────────┐
+│  Web / App  │ ───▶   │   Supabase DB   │ ───▶   │  Facial Agent     │
+│ (future UI) │        │   jobs table    │        │ (local worker)   │
+└─────────────┘        └─────────────────┘        └────────┬─────────┘
+                                                              │
+                                                              ▼
+                                                     ┌─────────────────┐
+                                                     │  Gateway API    │
+                                                     │ (Express / RPC) │
+                                                     └─────────────────┘
+                                                              │
+                                                              ▼
+                                                     Intelbras Facial
+
+```
+
+## Gateway
+
+Runs locally on the same network as the Intelbras device.
+
+Responsibilities:
+
+- Handle RPC2 authentication
+- Normalize intelbras RPC calls
+- Expose a clean REST API
+
+Expose a clean REST API
+
+## Facial Agent (/gateway/facial-agent)
+
+A local worker that:
+
+- Polls Supabase for pending jobs
+- Executes commands by calling the local Gateway
+- Updates job status (done / failed)
+
+This allows:
+
+- Remote control without exposing the device
+- Multi-tenant / multi-site scalability
+- Safe execution inside customer networks
+
 ## 🧱 Tech Stack
 
 - Node.js 18+
@@ -26,6 +81,7 @@ This project exposes a clean HTTP API to control Intelbras facial devices **with
 - Axios
 - Sharp (image preprocessing)
 - Intelbras RPC API (`RPC2 / RPC2_Login / RPC3_Loadfile`)
+- Supabase (`Postgres + RPC functions`)
 
 ---
 
@@ -41,22 +97,12 @@ This project exposes a clean HTTP API to control Intelbras facial devices **with
 
 Create a `.env` file in the project root:
 
-```env
+``` .env
 FACIAL_IP=192.168.3.227
 FACIAL_USER=admin
 FACIAL_PASS=your_password_here
 FACIAL_CHANNEL=1
 PORT=3000
-
-```
-
-
-## ▶️ Run the server
-
-- Install dependencies:
-
-```bash
-npm install
 
 ```
 
@@ -75,6 +121,77 @@ npm install
 curl http://localhost:3000/health
 
 ```
+
+## Facial Agent Setup (Job Worker)
+
+## The agent lives in:
+
+```bash
+gateway/facial-agent
+
+```
+
+## Environment variables
+
+- This project uses multiple `.env` files.
+
+Create `gateway/facial-agent/.env:`
+
+``` .env
+SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_SERVICE_ROLE_KEY=sb_secret_xxxxxxxxxxxxxxxxx
+
+SITE_ID=uuid-from-public.sites
+AGENT_ID=uuid-from-public.agents
+
+GATEWAY_BASE_URL=http://127.0.0.1:3000
+POLL_INTERVAL_MS=1500
+
+```
+
+⚠️ `AGENT_ID` must exist in `public.agents`
+`jobs.agent_id` has a foreign key constraint.
+
+## Run the Agent
+
+```bash
+node agent.js
+
+```
+
+## Expected output:
+
+
+```yaml
+🤖 FACIAL AGENT STARTED
+SITE_ID : ...
+AGENT_ID: ...
+GATEWAY : http://127.0.0.1:3000
+POLL   : 1500 ms
+
+```
+
+## Sending Commands (Jobs)
+
+- Example: open door:
+
+```sql
+insert into public.jobs (site_id, type, payload, status)
+values (
+  'SITE_UUID',
+  'open_door',
+  '{"channel": 1}'::jsonb,
+  'pending'
+);
+
+```
+The agent will:
+- Pick the job
+- Call the gateway
+- Update status to done
+- Execute the action physically on the device
+
+## Gateway API Examples
 
 ## Door control
 
@@ -214,3 +331,11 @@ No browser cookies required
 Users, cards, and faces are independent entities
 Automatic image preprocessing for firmware compatibility
 Safe for Raspberry Pi / embedded gateway usage
+
+
+## Security Notes
+
+- The Gateway runs only inside the local network
+- No inbound ports are required
+- All remote control is job-based and outbound-only
+- Safe for corporate and residential environments

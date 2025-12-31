@@ -1,15 +1,18 @@
-# Env
-.env
-.env.*   # opcional, mas útil (ex: .env.local)
-
 # Node
 node_modules/
-
-# Logs
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 
-# OS
+# Environment variables
+.env
+facial-agent/.env
+
+# OS / Editor
 .DS_Store
-Thumbs.db  
+.vscode/
+.idea/
+
+# Logs
+logs
+*.log
