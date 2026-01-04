@@ -13,6 +13,7 @@ function calcularHash(user, pass, realm, random) {
 async function rpc2Login({ ip, user, pass, timeoutMs }) {
   const URL_LOGIN = `http://${ip}/RPC2_Login`;
 
+  // Step 1: challenge
   const step1 = await axios.post(
     URL_LOGIN,
     { method: "global.login", params: { userName: user, password: "", clientType: "Web3.0" }, id: 1 },
@@ -21,6 +22,7 @@ async function rpc2Login({ ip, user, pass, timeoutMs }) {
 
   const ch = step1.data.params;
 
+  // Step 2: hashed login
   const step2 = await axios.post(
     URL_LOGIN,
     {
@@ -45,7 +47,10 @@ async function rpc2Call({ ip, session, method, params, id = 1000, timeoutMs }) {
   const { data } = await axios.post(
     URL,
     { method, params, session, id },
-    { headers: { "Content-Type": "application/json", Connection: "close" }, timeout: timeoutMs || 15000 }
+    {
+      headers: { "Content-Type": "application/json", Connection: "close" },
+      timeout: timeoutMs || 15000,
+    }
   );
   return data;
 }

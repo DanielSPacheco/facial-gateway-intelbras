@@ -33,7 +33,7 @@ This project exposes a clean HTTP API to control Intelbras facial devices **with
 
 ```text
 ┌─────────────┐        ┌─────────────────┐        ┌──────────────────┐
-│  Web / App  │ ───▶   │   Supabase DB   │ ───▶   │  Facial Agent     │
+│  Web / App  │ ───▶   │   Supabase DB   │ ───▶   │  Facial Agent    │
 │ (future UI) │        │   jobs table    │        │ (local worker)   │
 └─────────────┘        └─────────────────┘        └────────┬─────────┘
                                                               │

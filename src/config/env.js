@@ -16,7 +16,6 @@ function envString(name, def) {
 }
 
 function getConfig() {
-  // RPC2 / RPC2_Login (Dahua style)
   const FACIAL_IP = required("FACIAL_IP");
   const FACIAL_USER = required("FACIAL_USER");
   const FACIAL_PASS = required("FACIAL_PASS");
@@ -29,7 +28,6 @@ function getConfig() {
     FACIAL_USER,
     FACIAL_PASS,
 
-    // CGI openDoor endpoint uses "channel"
     FACIAL_CHANNEL: envString("FACIAL_CHANNEL", "1"),
   };
 }

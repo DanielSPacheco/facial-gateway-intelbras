@@ -16,3 +16,17 @@ facial-agent/.env
 # Logs
 logs
 *.log
+
+# Build / dist
+dist/
+build/
+
+# Coverage
+coverage/
+
+# Temporary files
+tmp/
+
+
+# Supabase
+supabase/

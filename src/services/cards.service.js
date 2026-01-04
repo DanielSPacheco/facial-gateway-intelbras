@@ -2,13 +2,9 @@ const { rpc2Login, rpc2Call } = require("../clients/rpc2.client");
 
 async function assignCard(cfg, { userID, cardNo }) {
   if (!userID || !cardNo) {
-    return {
-      ok: false,
-      error: { message: "Campos obrigatórios: userID, cardNo" },
-    };
+    return { ok: false, error: { message: "Campos obrigatórios: userID, cardNo" } };
   }
 
-  // 1) Login RPC2 (gera session válida)
   const session = await rpc2Login({
     ip: cfg.FACIAL_IP,
     user: cfg.FACIAL_USER,
@@ -16,7 +12,6 @@ async function assignCard(cfg, { userID, cardNo }) {
     timeoutMs: cfg.TIMEOUT_MS,
   });
 
-  // 2) Insere cartão usando método próprio
   const result = await rpc2Call({
     ip: cfg.FACIAL_IP,
     session,
@@ -34,11 +29,7 @@ async function assignCard(cfg, { userID, cardNo }) {
   });
 
   if (result?.result !== true) {
-    return {
-      ok: false,
-      error: result?.error || { message: "assign_card_failed" },
-      raw: result,
-    };
+    return { ok: false, error: result?.error || { message: "assign_card_failed" }, raw: result };
   }
 
   return {

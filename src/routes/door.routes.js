@@ -4,6 +4,7 @@ const { openDoor } = require("../services/door.service");
 module.exports = (cfg) => {
   const router = express.Router();
 
+  // POST /facial/door/open
   router.post("/open", async (req, res) => {
     const r = await openDoor(cfg);
     return res.status(r.ok ? 200 : 502).json({

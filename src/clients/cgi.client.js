@@ -1,53 +1,42 @@
 const { spawn } = require("child_process");
 
-function runCurlDigest({ baseUrl, user, pass, timeoutMs, method = "GET", path, headers = {}, body = null }) {
+function runCurlDigest({ baseUrl, path, user, pass, method = "GET", timeoutMs = 15000, body = null }) {
   return new Promise((resolve) => {
-    const url = `${baseUrl}${path.startsWith("/") ? "" : "/"}${path}`;
-
+    const url = `${baseUrl}${path}`;
     const args = [
       "-sS",
       "--digest",
       "-u",
       `${user}:${pass}`,
-      "--max-time",
-      String(Math.ceil((timeoutMs || 15000) / 1000)),
       "-X",
       method,
+      "--max-time",
+      String(Math.ceil(timeoutMs / 1000)),
       url,
-      "-w",
-      "\nHTTP_CODE:%{http_code}\n",
     ];
 
-    for (const [k, v] of Object.entries(headers || {})) {
-      args.push("-H", `${k}: ${v}`);
-    }
-
+    // Se enviar body, manda content-type json por padrão
     if (body !== null && body !== undefined) {
-      args.push("--data-binary", "@-");
+      args.splice(args.length - 1, 0, "-H", "Content-Type: application/json");
+      args.splice(args.length - 1, 0, "--data-binary", "@-");
     }
 
-    // CRÍTICO: shell:false (pra não quebrar o "&channel=1" no Windows)
-    const child = spawn("curl", args, { shell: false });
+    const child = spawn("curl", args);
 
-    let out = "";
-    let err = "";
+    let stdout = "";
+    let stderr = "";
 
-    child.stdout.on("data", (d) => (out += d.toString()));
-    child.stderr.on("data", (d) => (err += d.toString()));
+    child.stdout.on("data", (d) => (stdout += d.toString()));
+    child.stderr.on("data", (d) => (stderr += d.toString()));
 
     child.on("close", (code) => {
-      const match = out.match(/HTTP_CODE:(\d{3})/);
-      const httpCode = match ? Number(match[1]) : null;
-      const cleaned = out.replace(/\nHTTP_CODE:\d{3}\n?/, "");
-
       resolve({
-        ok: httpCode ? httpCode >= 200 && httpCode < 300 : false,
-        httpCode,
-        stdout: cleaned,
-        stderr: err,
-        exitCode: code,
+        ok: code === 0,
+        httpCode: code === 0 ? 200 : 0, // curl não retorna http code sem -w; mantemos simples
         url,
-        method,
+        stdout,
+        stderr,
+        code,
       });
     });
 
