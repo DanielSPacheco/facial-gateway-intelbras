@@ -7,6 +7,7 @@ const doorRoutes = require("./routes/door.routes");
 const cardsRoutes = require("./routes/cards.routes");
 const faceRoutes = require("./routes/face.routes");
 const usersRoutes = require("./routes/users.routes");
+const rpcRoutes = require("./routes/rpc.routes"); // <-- ADD AQUI
 
 function startServer() {
   const cfg = getConfig();
@@ -22,6 +23,9 @@ function startServer() {
   app.use("/facial/card", cardsRoutes(cfg));
   app.use("/facial/face", faceRoutes(cfg));
   app.use("/facial/user", usersRoutes(cfg));
+
+  // ✅ ADD AQUI (depois do app existir)
+  app.use("/facial/rpc", rpcRoutes(cfg));
 
   app.listen(cfg.PORT, () => {
     console.log("====================================");

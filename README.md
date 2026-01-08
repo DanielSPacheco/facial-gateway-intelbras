@@ -1,5 +1,18 @@
 # Facial Gateway – Intelbras RPC API
 
+Node.js gateway and local agent for Intelbras facial access devices (ISAPI / RPC).
+
+This project enables:
+
+- Remote door opening
+- Card management (add / delete)
+- User management
+- Face enrollment (Base64)
+- Secure job-based execution via local agent
+
+## Architecture
+
+
 Node.js (Express) gateway to integrate with **Intelbras facial access controllers** using  
 **RPC2 / RPC2_Login / RPC3_Loadfile**.
 
@@ -118,7 +131,7 @@ npm install
 ## Run the server
 
 ```bash
-curl http://localhost:3000/health
+curl http://localhost:4000/health
 
 ```
 
@@ -166,7 +179,7 @@ node agent.js
 🤖 FACIAL AGENT STARTED
 SITE_ID : ...
 AGENT_ID: ...
-GATEWAY : http://127.0.0.1:3000
+GATEWAY : http://127.0.0.1:4000
 POLL   : 1500 ms
 
 ```
@@ -196,14 +209,14 @@ The agent will:
 ## Door control
 
 ```bash
-curl -X POST http://localhost:3000/facial/door/open
+curl -X POST http://localhost:4000/facial/door/open
 
 ```
 
 ## User-Create
 
 ```bash
-curl -X POST http://localhost:3000/facial/user/create \
+curl -X POST http://localhost:4000/facial/user/create \
   -H "Content-Type: application/json" \
   -d '{
     "userID": "888",
@@ -217,13 +230,13 @@ curl -X POST http://localhost:3000/facial/user/create \
 ## Users-Get by ID
 
 ```bash
-curl http://localhost:3000/facial/user/888
+curl http://localhost:4000/facial/user/888
 
 ```
 
 ##User-Uptade
 ```bash
-curl -X POST http://localhost:3000/facial/user/update \
+curl -X POST http://localhost:4000/facial/user/update \
   -H "Content-Type: application/json" \
   -d '{
     "userID": "888",
@@ -235,7 +248,7 @@ curl -X POST http://localhost:3000/facial/user/update \
 ## User-Delete
 
 ```bash
-curl -X POST http://localhost:3000/facial/user/delete \
+curl -X POST http://localhost:4000/facial/user/delete \
   -H "Content-Type: application/json" \
   -d '{
     "userID": "888"
@@ -246,7 +259,7 @@ curl -X POST http://localhost:3000/facial/user/delete \
 ## Cards/Tags-Assign
 
 ```bash
-curl -X POST http://localhost:3000/facial/card/add \
+curl -X POST http://localhost:4000/facial/card/add \
   -H "Content-Type: application/json" \
   -d '{
     "userID": "888",
@@ -271,7 +284,7 @@ Typical resolution 160–220 px
 ## Face enrollment-Upload file
 
 ```bash
-curl -X POST http://localhost:3000/facial/face/upload \
+curl -X POST http://localhost:4000/facial/face/upload \
   -F userID=777 \
   -F file=@/path/to/photo.jpg
 
@@ -280,7 +293,7 @@ curl -X POST http://localhost:3000/facial/face/upload \
 ## Face enrollment-Upload Base64
 
 ```bash
-curl -X POST http://localhost:3000/facial/face/uploadBase64 \
+curl -X POST http://localhost:4000/facial/face/uploadBase64 \
   -H "Content-Type: application/json" \
   -d '{
     "userID": "777",

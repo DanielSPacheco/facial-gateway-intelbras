@@ -1,12 +1,20 @@
 /**
- * Facial Agent (versão limpa e robusta)
+ * Facial Agent (versão completa, limpa e robusta)
  *
  * Fluxo:
  * 1) procura 1 job "pending" do SITE
  * 2) tenta travar (lock) mudando para "processing" (só se ainda estiver pending)
- * 3) chama o gateway local
+ * 3) chama o gateway local (rotas mapeadas por job.type)
  * 4) atualiza job para "done" ou "failed"
  *    - se falhar e ainda tiver tentativas: volta pra "pending" e incrementa attempts
+ *
+ * Suporta:
+ * - open_door
+ * - create_user / user_create
+ * - update_user / user_update
+ * - delete_user / user_delete
+ * - add_card / card_add
+ * - face_upload_base64 / upload_face_base64
  */
 
 const path = require("path");
@@ -26,11 +34,15 @@ const AGENT_ID = process.env.AGENT_ID;
 const GATEWAY_BASE_URL = process.env.GATEWAY_BASE_URL || "http://127.0.0.1:3000";
 const POLL_INTERVAL_MS = Number(process.env.POLL_INTERVAL_MS || 1500);
 
-// Status (precisa bater com o CHECK constraint)
+// Status (precisa bater com o CHECK constraint do banco)
 const JOB_STATUS_PENDING = process.env.JOB_STATUS_PENDING || "pending";
 const JOB_STATUS_PROCESSING = process.env.JOB_STATUS_PROCESSING || "processing";
 const JOB_STATUS_DONE = process.env.JOB_STATUS_DONE || "done";
 const JOB_STATUS_FAILED = process.env.JOB_STATUS_FAILED || "failed";
+
+// Timeouts
+const DEFAULT_HTTP_TIMEOUT_MS = Number(process.env.DEFAULT_HTTP_TIMEOUT_MS || 30000);
+const FACE_HTTP_TIMEOUT_MS = Number(process.env.FACE_HTTP_TIMEOUT_MS || 60000);
 
 // ========================
 // UTILS
@@ -161,35 +173,51 @@ async function failOrRetryJob(job, message, result = null) {
 }
 
 // ========================
-// GATEWAY CALL
+// HTTP: JSON POST (com timeout + parsing robusto)
 // ========================
-async function httpJson(url, body) {
-  const resp = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body || {}),
-  });
+async function httpJson(url, body, timeoutMs = DEFAULT_HTTP_TIMEOUT_MS) {
+  const controller = new AbortController();
+  const t = setTimeout(() => controller.abort(), timeoutMs);
 
-  const text = await resp.text();
-
-  let parsed;
   try {
-    parsed = JSON.parse(text);
-  } catch {
-    parsed = { ok: false, error: "NON_JSON_RESPONSE", raw: text };
+    const resp = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body || {}),
+      signal: controller.signal,
+    });
+
+    const text = await resp.text();
+
+    let parsed;
+    try {
+      parsed = JSON.parse(text);
+    } catch {
+      parsed = { ok: false, error: "NON_JSON_RESPONSE", raw: text };
+    }
+
+    // Se gateway não devolver "ok", inferimos pelo HTTP status
+    if (typeof parsed.ok === "undefined") parsed.ok = resp.ok;
+
+    // Se não ok, injeta status/http pra debug
+    if (!parsed.ok) {
+      parsed.http_status = resp.status;
+    }
+
+    return parsed;
+  } catch (err) {
+    return {
+      ok: false,
+      error: err?.name === "AbortError" ? "TIMEOUT" : (err?.message || "FETCH_ERROR"),
+    };
+  } finally {
+    clearTimeout(t);
   }
-
-  // Se gateway não devolver "ok", inferimos pelo HTTP status
-  if (typeof parsed.ok === "undefined") parsed.ok = resp.ok;
-
-  // Se não ok, injeta status/http pra debug
-  if (!parsed.ok) {
-    parsed.http_status = resp.status;
-  }
-
-  return parsed;
 }
 
+// ========================
+// GATEWAY CALL (job.type -> endpoint)
+// ========================
 async function callGateway(job) {
   const action = job.type;
   const payload = job.payload || {};
@@ -201,7 +229,24 @@ async function callGateway(job) {
     case "create_user":
       return httpJson(`${GATEWAY_BASE_URL}/facial/user/create`, payload);
 
+    case "user_update":
+    case "update_user":
+      return httpJson(`${GATEWAY_BASE_URL}/facial/user/update`, payload);
+
+    case "user_delete":
+    case "delete_user":
+      return httpJson(`${GATEWAY_BASE_URL}/facial/user/delete`, payload);
+
+    case "card_add":
+    case "add_card":
+      return httpJson(`${GATEWAY_BASE_URL}/facial/card/add`, payload);
+
+    case "card_delete":
+    case "delete_card":
+      return httpJson(`${GATEWAY_BASE_URL}/facial/card/delete`, payload);
+
     case "face_upload_base64":
+    case "upload_face_base64":
       return httpJson(`${GATEWAY_BASE_URL}/facial/face/uploadBase64`, payload);
 
     default:
@@ -224,6 +269,10 @@ async function main() {
   console.log("AGENT_ID:", AGENT_ID);
   console.log("GATEWAY :", GATEWAY_BASE_URL);
   console.log("POLL   :", POLL_INTERVAL_MS, "ms");
+  console.log("TIMEOUT:", {
+    defaultMs: DEFAULT_HTTP_TIMEOUT_MS,
+    faceMs: FACE_HTTP_TIMEOUT_MS,
+  });
   console.log("STATUS :", {
     pending: JOB_STATUS_PENDING,
     processing: JOB_STATUS_PROCESSING,
@@ -248,7 +297,9 @@ async function main() {
         continue;
       }
 
-      console.log(`[JOB] locked ${job.id} (${job.type}) attempts=${job.attempts || 0}/${job.max_attempts || 3}`);
+      console.log(
+        `[JOB] locked ${job.id} (${job.type}) attempts=${job.attempts || 0}/${job.max_attempts || 3}`
+      );
 
       const result = await callGateway(job);
 
@@ -256,12 +307,24 @@ async function main() {
         await completeJob(job.id, result);
         console.log(`[JOB] done   ${job.id}`);
       } else {
-        const reason = result?.error || "GATEWAY_ERROR";
+        const reason =
+          typeof result?.error === "string"
+            ? result.error
+            : result?.error?.message
+                ? result.error.message
+                : result?.error
+                  ? JSON.stringify(result.error)
+                  : "GATEWAY_ERROR";
+
         const info = await failOrRetryJob(job, reason, result);
         if (info.retried) {
-          console.warn(`[JOB] retry  ${job.id} -> pending (${info.attempts}/${info.maxAttempts}) reason=${reason}`);
+          console.warn(
+            `[JOB] retry  ${job.id} -> pending (${info.attempts}/${info.maxAttempts}) reason=${reason}`
+          );
         } else {
-          console.error(`[JOB] failed ${job.id} (final) (${info.attempts}/${info.maxAttempts}) reason=${reason}`);
+          console.error(
+            `[JOB] failed ${job.id} (final) (${info.attempts}/${info.maxAttempts}) reason=${reason}`
+          );
         }
       }
     } catch (err) {
@@ -271,4 +334,4 @@ async function main() {
   }
 }
 
-main(); 
+main();
