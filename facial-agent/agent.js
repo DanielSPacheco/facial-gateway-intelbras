@@ -1,23 +1,21 @@
 /**
- * Facial Agent (versão completa, limpa e robusta)
+ * FACIAL AGENT (Enterprise) — robusto + isolamento por device
  *
- * Fluxo:
- * 1) procura 1 job "pending" do SITE
- * 2) tenta travar (lock) mudando para "processing" (só se ainda estiver pending)
- * 3) chama o gateway local (rotas mapeadas por job.type)
- * 4) atualiza job para "done" ou "failed"
- *    - se falhar e ainda tiver tentativas: volta pra "pending" e incrementa attempts
+ * Requisitos:
+ * - Node 18+ (fetch nativo)
+ * - SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY
+ * - SITE_ID / AGENT_ID
  *
- * Suporta:
- * - open_door
- * - create_user / user_create
- * - update_user / user_update
- * - delete_user / user_delete
- * - add_card / card_add
- * - face_upload_base64 / upload_face_base64
+ * Convenções:
+ * - jobs.payload.device_id = UUID do device em public.facials
+ * - Agent busca o device no DB e injeta "target" no payload enviado ao gateway
+ *
+ * Observação:
+ * - O Gateway precisa suportar receber o target (ip/channel) no body.
  */
 
 const path = require("path");
+const net = require("net");
 require("dotenv").config({ path: path.join(__dirname, ".env") });
 
 const { createClient } = require("@supabase/supabase-js");
@@ -31,10 +29,10 @@ const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const SITE_ID = process.env.SITE_ID;
 const AGENT_ID = process.env.AGENT_ID;
 
-const GATEWAY_BASE_URL = process.env.GATEWAY_BASE_URL || "http://127.0.0.1:3000";
+const GATEWAY_BASE_URL = process.env.GATEWAY_BASE_URL || "http://127.0.0.1:4000";
 const POLL_INTERVAL_MS = Number(process.env.POLL_INTERVAL_MS || 1500);
 
-// Status (precisa bater com o CHECK constraint do banco)
+// Job status
 const JOB_STATUS_PENDING = process.env.JOB_STATUS_PENDING || "pending";
 const JOB_STATUS_PROCESSING = process.env.JOB_STATUS_PROCESSING || "processing";
 const JOB_STATUS_DONE = process.env.JOB_STATUS_DONE || "done";
@@ -43,6 +41,12 @@ const JOB_STATUS_FAILED = process.env.JOB_STATUS_FAILED || "failed";
 // Timeouts
 const DEFAULT_HTTP_TIMEOUT_MS = Number(process.env.DEFAULT_HTTP_TIMEOUT_MS || 30000);
 const FACE_HTTP_TIMEOUT_MS = Number(process.env.FACE_HTTP_TIMEOUT_MS || 60000);
+
+// Heartbeat
+const HEARTBEAT_ENABLED = (process.env.HEARTBEAT_ENABLED ?? "true") === "true";
+const HEARTBEAT_LOOP_MS = Number(process.env.HEARTBEAT_LOOP_MS || 5000);
+const HEARTBEAT_TCP_PORT = Number(process.env.HEARTBEAT_TCP_PORT || 80);
+const HEARTBEAT_TCP_TIMEOUT_MS = Number(process.env.HEARTBEAT_TCP_TIMEOUT_MS || 1200);
 
 // ========================
 // UTILS
@@ -59,6 +63,11 @@ function nowIso() {
   return new Date().toISOString();
 }
 
+function isSchemaCacheError(err) {
+  const msg = String(err?.message || err || "");
+  return msg.includes("schema cache") || msg.includes("Could not find the");
+}
+
 // ========================
 // SUPABASE CLIENT
 // ========================
@@ -67,7 +76,57 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
 });
 
 // ========================
-// DB: FIND PENDING
+// DB: DEVICES (facials)
+// ========================
+async function listSiteDevices() {
+  const { data, error } = await supabase
+    .from("facials")
+    .select("id, site_id, name, ip, channel, client_id, keep_alive_enabled, probing_interval, protocol")
+    .eq("site_id", SITE_ID);
+
+  if (error) throw error;
+  return data || [];
+}
+
+async function getDeviceById(deviceId) {
+  const { data, error } = await supabase
+    .from("facials")
+    .select("id, site_id, name, ip, channel, client_id, keep_alive_enabled, probing_interval, protocol")
+    .eq("id", deviceId)
+    .maybeSingle();
+
+  if (error) throw error;
+  return data || null;
+}
+
+async function updateDevicePresence(deviceId, patch) {
+  // patch esperado: { status, last_seen_at, latency_ms }
+  try {
+    const { error } = await supabase.from("facials").update(patch).eq("id", deviceId);
+    if (error) throw error;
+  } catch (err) {
+    // Se schema cache ainda não atualizou, não derruba o agent.
+    if (isSchemaCacheError(err)) {
+      console.warn("[HB] schema cache outdated. Run: NOTIFY pgrst, 'reload schema';");
+      // tenta atualizar pelo menos o status (coluna já existe no seu print)
+      try {
+        const safePatch = {};
+        if (typeof patch.status !== "undefined") safePatch.status = patch.status;
+        if (Object.keys(safePatch).length) {
+          const { error } = await supabase.from("facials").update(safePatch).eq("id", deviceId);
+          if (error) throw error;
+        }
+      } catch (e2) {
+        console.warn("[HB] fallback update failed:", e2?.message || e2);
+      }
+      return;
+    }
+    throw err;
+  }
+}
+
+// ========================
+// DB: JOBS
 // ========================
 async function findPendingJob() {
   const { data, error } = await supabase
@@ -75,7 +134,6 @@ async function findPendingJob() {
     .select("*")
     .eq("site_id", SITE_ID)
     .eq("status", JOB_STATUS_PENDING)
-    // opcional: respeitar agendamento
     .or(`scheduled_for.is.null,scheduled_for.lte.${nowIso()}`)
     .order("priority", { ascending: true })
     .order("created_at", { ascending: true })
@@ -85,9 +143,6 @@ async function findPendingJob() {
   return data?.[0] || null;
 }
 
-// ========================
-// DB: LOCK (atomic-ish)
-// ========================
 async function lockJob(jobId) {
   const { data, error } = await supabase
     .from("jobs")
@@ -99,17 +154,14 @@ async function lockJob(jobId) {
       updated_at: nowIso(),
     })
     .eq("id", jobId)
-    .eq("status", JOB_STATUS_PENDING) // só trava se ainda estiver pending
+    .eq("status", JOB_STATUS_PENDING)
     .select("*")
     .maybeSingle();
 
   if (error) throw error;
-  return data || null; // null = alguém pegou antes
+  return data || null;
 }
 
-// ========================
-// DB: COMPLETE
-// ========================
 async function completeJob(jobId, result) {
   const { error } = await supabase
     .from("jobs")
@@ -127,14 +179,10 @@ async function completeJob(jobId, result) {
   if (error) throw error;
 }
 
-// ========================
-// DB: FAIL (com retry)
-// ========================
 async function failOrRetryJob(job, message, result = null) {
   const attempts = Number(job.attempts || 0);
   const maxAttempts = Number(job.max_attempts || 3);
 
-  // Se ainda tem tentativa: volta pra pending e incrementa attempts
   if (attempts + 1 < maxAttempts) {
     const { error } = await supabase
       .from("jobs")
@@ -153,7 +201,6 @@ async function failOrRetryJob(job, message, result = null) {
     return { retried: true, attempts: attempts + 1, maxAttempts };
   }
 
-  // Senão: falha definitivo
   const { error } = await supabase
     .from("jobs")
     .update({
@@ -173,7 +220,7 @@ async function failOrRetryJob(job, message, result = null) {
 }
 
 // ========================
-// HTTP: JSON POST (com timeout + parsing robusto)
+// HTTP: POST JSON w/ timeout
 // ========================
 async function httpJson(url, body, timeoutMs = DEFAULT_HTTP_TIMEOUT_MS) {
   const controller = new AbortController();
@@ -188,7 +235,6 @@ async function httpJson(url, body, timeoutMs = DEFAULT_HTTP_TIMEOUT_MS) {
     });
 
     const text = await resp.text();
-
     let parsed;
     try {
       parsed = JSON.parse(text);
@@ -196,13 +242,8 @@ async function httpJson(url, body, timeoutMs = DEFAULT_HTTP_TIMEOUT_MS) {
       parsed = { ok: false, error: "NON_JSON_RESPONSE", raw: text };
     }
 
-    // Se gateway não devolver "ok", inferimos pelo HTTP status
     if (typeof parsed.ok === "undefined") parsed.ok = resp.ok;
-
-    // Se não ok, injeta status/http pra debug
-    if (!parsed.ok) {
-      parsed.http_status = resp.status;
-    }
+    if (!parsed.ok) parsed.http_status = resp.status;
 
     return parsed;
   } catch (err) {
@@ -218,39 +259,111 @@ async function httpJson(url, body, timeoutMs = DEFAULT_HTTP_TIMEOUT_MS) {
 // ========================
 // GATEWAY CALL (job.type -> endpoint)
 // ========================
-async function callGateway(job) {
-  const action = job.type;
+function normalizeAction(type) {
+  const t = String(type || "").trim();
+  if (!t) return "";
+  return t;
+}
+
+async function callGateway(job, target) {
+  const action = normalizeAction(job.type);
   const payload = job.payload || {};
+
+  // Aqui está o pulo do gato:
+  // injeta target no payload para o gateway saber qual dispositivo atingir
+  const withTarget = target ? { ...payload, target } : payload;
 
   switch (action) {
     case "open_door":
-      return httpJson(`${GATEWAY_BASE_URL}/facial/door/open`, payload);
+      return httpJson(`${GATEWAY_BASE_URL}/facial/door/open`, withTarget);
 
     case "create_user":
-      return httpJson(`${GATEWAY_BASE_URL}/facial/user/create`, payload);
+    case "user_create":
+      return httpJson(`${GATEWAY_BASE_URL}/facial/user/create`, withTarget);
 
-    case "user_update":
     case "update_user":
-      return httpJson(`${GATEWAY_BASE_URL}/facial/user/update`, payload);
+    case "user_update":
+      return httpJson(`${GATEWAY_BASE_URL}/facial/user/update`, withTarget);
 
-    case "user_delete":
     case "delete_user":
-      return httpJson(`${GATEWAY_BASE_URL}/facial/user/delete`, payload);
+    case "user_delete":
+      return httpJson(`${GATEWAY_BASE_URL}/facial/user/delete`, withTarget);
 
-    case "card_add":
     case "add_card":
-      return httpJson(`${GATEWAY_BASE_URL}/facial/card/add`, payload);
+    case "card_add":
+      return httpJson(`${GATEWAY_BASE_URL}/facial/card/add`, withTarget);
 
-    case "card_delete":
     case "delete_card":
-      return httpJson(`${GATEWAY_BASE_URL}/facial/card/delete`, payload);
+    case "card_delete":
+      return httpJson(`${GATEWAY_BASE_URL}/facial/card/delete`, withTarget);
 
-    case "face_upload_base64":
     case "upload_face_base64":
-      return httpJson(`${GATEWAY_BASE_URL}/facial/face/uploadBase64`, payload);
+    case "face_upload_base64":
+      // operações de face geralmente demoram mais
+      return httpJson(`${GATEWAY_BASE_URL}/facial/face/uploadBase64`, withTarget, FACE_HTTP_TIMEOUT_MS);
 
     default:
       return { ok: false, error: `UNKNOWN_ACTION:${action}` };
+  }
+}
+
+// ========================
+// HEARTBEAT (TCP ping)
+// ========================
+function tcpPing(ip, port, timeoutMs) {
+  return new Promise((resolve) => {
+    const start = Date.now();
+    const socket = new net.Socket();
+
+    const done = (ok) => {
+      try { socket.destroy(); } catch {}
+      const latency = Date.now() - start;
+      resolve({ ok, latency_ms: ok ? latency : null });
+    };
+
+    socket.setTimeout(timeoutMs);
+
+    socket.once("connect", () => done(true));
+    socket.once("timeout", () => done(false));
+    socket.once("error", () => done(false));
+
+    socket.connect(port, ip);
+  });
+}
+
+async function heartbeatLoop() {
+  if (!HEARTBEAT_ENABLED) return;
+
+  console.log("[HB] Heartbeat loop started:", {
+    enabled: HEARTBEAT_ENABLED,
+    loopMs: HEARTBEAT_LOOP_MS,
+    tcpPort: HEARTBEAT_TCP_PORT,
+    tcpTimeoutMs: HEARTBEAT_TCP_TIMEOUT_MS,
+  });
+
+  while (true) {
+    try {
+      const devices = await listSiteDevices();
+
+      for (const d of devices) {
+        const ip = d.ip;
+        if (!ip) continue;
+
+        const r = await tcpPing(ip, HEARTBEAT_TCP_PORT, HEARTBEAT_TCP_TIMEOUT_MS);
+
+        const patch = {
+          status: r.ok ? "online" : "offline",
+          last_seen_at: r.ok ? nowIso() : null,
+          latency_ms: r.ok ? r.latency_ms : null,
+        };
+
+        await updateDevicePresence(d.id, patch);
+      }
+    } catch (err) {
+      console.warn("[HB] error:", err?.message || err);
+    }
+
+    await sleep(HEARTBEAT_LOOP_MS);
   }
 }
 
@@ -264,22 +377,15 @@ async function main() {
   requireEnv("AGENT_ID");
 
   console.log("====================================");
-  console.log("🤖 FACIAL AGENT STARTED");
+  console.log("🤖 FACIAL AGENT (Enterprise) STARTED");
   console.log("SITE_ID :", SITE_ID);
   console.log("AGENT_ID:", AGENT_ID);
   console.log("GATEWAY :", GATEWAY_BASE_URL);
   console.log("POLL   :", POLL_INTERVAL_MS, "ms");
-  console.log("TIMEOUT:", {
-    defaultMs: DEFAULT_HTTP_TIMEOUT_MS,
-    faceMs: FACE_HTTP_TIMEOUT_MS,
-  });
-  console.log("STATUS :", {
-    pending: JOB_STATUS_PENDING,
-    processing: JOB_STATUS_PROCESSING,
-    done: JOB_STATUS_DONE,
-    failed: JOB_STATUS_FAILED,
-  });
   console.log("====================================");
+
+  // roda heartbeat em paralelo
+  heartbeatLoop().catch((e) => console.warn("[HB] loop crashed:", e?.message || e));
 
   while (true) {
     try {
@@ -292,16 +398,35 @@ async function main() {
 
       const job = await lockJob(pending.id);
       if (!job) {
-        // outro agente pegou, ou corrida
         await sleep(250);
         continue;
       }
 
-      console.log(
-        `[JOB] locked ${job.id} (${job.type}) attempts=${job.attempts || 0}/${job.max_attempts || 3}`
-      );
+      const deviceId = job?.payload?.device_id || job?.payload?.deviceId || null;
 
-      const result = await callGateway(job);
+      // target que o gateway vai usar
+      let target = null;
+
+      if (deviceId) {
+        const device = await getDeviceById(deviceId);
+        if (!device) {
+          const info = await failOrRetryJob(job, `DEVICE_NOT_FOUND:${deviceId}`, { deviceId });
+          console.warn(`[JOB] ${job.id} device not found -> ${info.retried ? "retry" : "failed"}`);
+          continue;
+        }
+
+        target = {
+          device_id: device.id,
+          ip: device.ip,
+          channel: device.channel ?? 1,
+          protocol: device.protocol || "intelbras",
+          name: device.name || null,
+        };
+      }
+
+      console.log(`[JOB] locked ${job.id} (${job.type}) device=${deviceId || "none"}`);
+
+      const result = await callGateway(job, target);
 
       if (result?.ok === true) {
         await completeJob(job.id, result);
@@ -311,20 +436,16 @@ async function main() {
           typeof result?.error === "string"
             ? result.error
             : result?.error?.message
-                ? result.error.message
-                : result?.error
-                  ? JSON.stringify(result.error)
-                  : "GATEWAY_ERROR";
+              ? result.error.message
+              : result?.error
+                ? JSON.stringify(result.error)
+                : "GATEWAY_ERROR";
 
         const info = await failOrRetryJob(job, reason, result);
         if (info.retried) {
-          console.warn(
-            `[JOB] retry  ${job.id} -> pending (${info.attempts}/${info.maxAttempts}) reason=${reason}`
-          );
+          console.warn(`[JOB] retry  ${job.id} (${info.attempts}/${info.maxAttempts}) reason=${reason}`);
         } else {
-          console.error(
-            `[JOB] failed ${job.id} (final) (${info.attempts}/${info.maxAttempts}) reason=${reason}`
-          );
+          console.error(`[JOB] failed ${job.id} FINAL (${info.attempts}/${info.maxAttempts}) reason=${reason}`);
         }
       }
     } catch (err) {
@@ -333,5 +454,8 @@ async function main() {
     }
   }
 }
+
+process.on("SIGINT", () => process.exit(0));
+process.on("SIGTERM", () => process.exit(0));
 
 main();

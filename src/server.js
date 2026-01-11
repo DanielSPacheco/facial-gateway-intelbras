@@ -7,6 +7,7 @@ const doorRoutes = require("./routes/door.routes");
 const cardsRoutes = require("./routes/cards.routes");
 const faceRoutes = require("./routes/face.routes");
 const usersRoutes = require("./routes/users.routes");
+const snapshotRoutes = require("./routes/snapshot.routes");
 const rpcRoutes = require("./routes/rpc.routes"); // <-- ADD AQUI
 
 function startServer() {
@@ -20,6 +21,7 @@ function startServer() {
   app.get("/health", (_req, res) => res.json({ ok: true }));
 
   app.use("/facial/door", doorRoutes(cfg));
+  app.use("/facial", snapshotRoutes(cfg));
   app.use("/facial/card", cardsRoutes(cfg));
   app.use("/facial/face", faceRoutes(cfg));
   app.use("/facial/user", usersRoutes(cfg));

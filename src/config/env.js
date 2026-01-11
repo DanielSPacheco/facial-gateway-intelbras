@@ -16,17 +16,13 @@ function envString(name, def) {
 }
 
 function getConfig() {
-  const FACIAL_IP = required("FACIAL_IP");
-  const FACIAL_USER = required("FACIAL_USER");
-  const FACIAL_PASS = required("FACIAL_PASS");
-
   return {
-    PORT: envNumber("PORT", 3000),
+    PORT: envNumber("PORT", 4000),
     TIMEOUT_MS: envNumber("TIMEOUT_MS", 15000),
 
-    FACIAL_IP,
-    FACIAL_USER,
-    FACIAL_PASS,
+    FACIAL_IP: required("FACIAL_IP"),
+    FACIAL_USER: required("FACIAL_USER"),
+    FACIAL_PASS: required("FACIAL_PASS"),
 
     FACIAL_CHANNEL: envString("FACIAL_CHANNEL", "1"),
   };
