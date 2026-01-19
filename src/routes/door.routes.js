@@ -5,16 +5,18 @@ module.exports = (cfg) => {
   const router = express.Router();
 
   // POST /facial/door/open
+  // body: { target?: {...}, channel?: "1" }
   router.post("/open", async (req, res) => {
-    const r = await openDoor(cfg);
-    return res.status(r.ok ? 200 : 502).json({
-      ok: r.ok,
-      command: "openDoor",
-      httpCode: r.httpCode,
-      url: r.url,
-      data: r.data,
-      error: r.error,
-    });
+    try {
+      const result = await openDoor(cfg, req.body || {});
+      res.status(result.ok ? 200 : 500).json(result);
+    } catch (e) {
+      res.status(500).json({
+        ok: false,
+        error: "INTERNAL_ERROR",
+        details: e?.message || String(e),
+      });
+    }
   });
 
   return router;

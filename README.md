@@ -1,352 +1,431 @@
-# Facial Gateway – Intelbras RPC API
+# Facial Gateway – Intelbras RPC Platform
 
-Node.js gateway and local agent for Intelbras facial access devices (ISAPI / RPC).
+Production-ready Gateway + API + Local Agent + SaaS-ready Architecture for Intelbras Facial Access Controllers.
 
-This project enables:
+This project transforms Intelbras RPC2 / CGI protocols into a secure, scalable and cloud-friendly control platform.
 
-- Remote door opening
-- Card management (add / delete)
-- User management
-- Face enrollment (Base64)
-- Secure job-based execution via local agent
-
-## Architecture
-
-
-Node.js (Express) gateway to integrate with **Intelbras facial access controllers** using  
-**RPC2 / RPC2_Login / RPC3_Loadfile**.
-
-This project exposes a clean HTTP API to control Intelbras facial devices **without relying on browser sessions, SDKs, or cookies**.
+Designed for:
+- Condominiums
+- Enterprises
+- SaaS platforms
+- Remote access control
+- Multi-device environments
 
 ---
 
-## 🚀 Features
+## 🚀 What This Platform Solves
 
-- ✅ Open door  
-- ✅ Create user (`AccessUser.insertMulti`)  
-- ✅ Update user (`AccessUser.updateMulti`)  
-- ✅ Delete user (`AccessUser.removeMulti`)  
-- ✅ Get user by ID  
-- ✅ Card / Tag assignment (`AccessCard.insertMulti`)  
-- ✅ Face image upload (**WORKING**)  
+Intelbras devices are:
+- LAN-only
+- Session-based
+- Browser-dependent
+- Hard to integrate remotely
 
----
-
-## 🚀 Distributed Execution
-
-- ✅ Supabase-based job queue
-- ✅ Local agent execution (safe for LAN / Raspberry Pi)
-- ✅ Multi-site / multi-device ready
-- ✅ No inbound ports required on client network 
+This project provides:
+- ✅ Clean REST API
+- ✅ Secure remote access
+- ✅ Zero inbound ports on client networks
+- ✅ Multi-tenant ready
+- ✅ UI + Mobile ready
+- ✅ Distributed execution
 
 ---
 
-## Architecture Overview
-
+## 🧠 Architecture Overview
 
 ```text
-┌─────────────┐        ┌─────────────────┐        ┌──────────────────┐
-│  Web / App  │ ───▶   │   Supabase DB   │ ───▶   │  Facial Agent    │
-│ (future UI) │        │   jobs table    │        │ (local worker)   │
-└─────────────┘        └─────────────────┘        └────────┬─────────┘
-                                                              │
-                                                              ▼
-                                                     ┌─────────────────┐
-                                                     │  Gateway API    │
-                                                     │ (Express / RPC) │
-                                                     └─────────────────┘
-                                                              │
-                                                              ▼
-                                                     Intelbras Facial
-
+┌───────────────┐
+│   Web / App   │   (Next.js / Mobile)
+│  Frontend UI  │
+└───────┬───────┘
+        │ HTTPS + JWT (Supabase Auth)
+        ▼
+┌─────────────────────┐
+│     Gateway API      │
+│  facial-gateway-api  │
+│                      │
+│ - Auth validation    │
+│ - Device resolver    │
+│ - RPC abstraction    │
+│ - Permission layer   │
+└─────────┬────────────┘
+          │ LAN
+          ▼
+┌─────────────────────┐
+│ Intelbras Facial Dev │
+│ RPC2 / CGI / Loadfile│
+└─────────────────────┘
 ```
 
-## Gateway
+**Optional Distributed Mode:**
 
-Runs locally on the same network as the Intelbras device.
+```text
+┌──────────────┐       ┌────────────────┐
+│   Supabase   │◀────▶ │  Facial Agent  │
+│ Jobs Queue   │       │ Local Executor │
+└──────────────┘       └────────────────┘
+```
 
-Responsibilities:
+---
 
-- Handle RPC2 authentication
-- Normalize intelbras RPC calls
-- Expose a clean REST API
+## 🧩 System Components
 
-Expose a clean REST API
+### 1️⃣ Gateway API (Main Backend)
 
-## Facial Agent (/gateway/facial-agent)
+Runs close to devices or in private cloud.
 
-A local worker that:
+**Responsibilities:**
+- RPC2 authentication
+- CGI snapshot proxy
+- Event photo download (RPC_Loadfile)
+- JWT authentication
+- Tenant isolation
+- Permission enforcement
+- Device routing
 
-- Polls Supabase for pending jobs
-- Executes commands by calling the local Gateway
-- Updates job status (done / failed)
+### 2️⃣ Facial Agent (Optional Worker)
 
-This allows:
+Used in enterprise deployments.
 
-- Remote control without exposing the device
-- Multi-tenant / multi-site scalability
-- Safe execution inside customer networks
+**Responsibilities:**
+- Poll Supabase jobs
+- Execute commands locally
+- Avoid inbound NAT exposure
+- Offline tolerant execution
+
+### 3️⃣ Frontend (External Project)
+
+The frontend NEVER connects directly to devices.
+
+It only:
+- Authenticates with Supabase
+- Calls Gateway API
+- Reads tenant data using RLS
+
+---
 
 ## 🧱 Tech Stack
 
 - Node.js 18+
 - Express
-- Axios
-- Sharp (image preprocessing)
-- Intelbras RPC API (`RPC2 / RPC2_Login / RPC3_Loadfile`)
-- Supabase (`Postgres + RPC functions`)
+- Axios + Curl Digest
+- Sharp (image compression)
+- Intelbras RPC API (`RPC2 / CGI / RPC_Loadfile`)
+- Supabase (`Auth + Postgres + RLS`)
+- Next.js UI (external project)
 
 ---
 
-## ⚙️ Setup
+## ✅ Features
+
+### Access Control
+- ✅ Open door
+- ✅ Remote unlock
+- ✅ Live snapshot
+- ✅ Event history
+- ✅ Event photo preview
+
+### User Management
+- ✅ Create user
+- ✅ Update user
+- ✅ Delete user
+- ✅ Assign card/tag
+- ✅ Face enrollment (Base64 + auto compression)
+
+### Enterprise
+- ✅ Multi-device
+- ✅ Multi-tenant
+- ✅ Role-based access
+- ✅ Audit logs
+- ✅ SaaS-ready architecture
+
+---
+
+## 🔐 Authentication Model
+
+All requests use Supabase JWT:
+
+```bash
+Authorization: Bearer eyJhbGciOi...
+```
+
+Gateway validates token and extracts:
+- `user_id`
+- `tenant_id`
+- `role`
+
+**Guarantees:**
+- Secure isolation
+- Audit traceability
+- Permission enforcement
+
+---
+
+## ⚙️ Installation
 
 ### Requirements
 
 - Node.js 18+
-- Intelbras facial controller reachable on the network
-- Admin credentials for the device
+- Intelbras facial controller
+- Device admin credentials
 
-### Environment variables
+### Environment Variables
 
 Create a `.env` file in the project root:
 
-``` .env
+```env
+PORT=4000
+
+# Default single device fallback
 FACIAL_IP=192.168.3.227
 FACIAL_USER=admin
-FACIAL_PASS=your_password_here
+FACIAL_PASS=password
 FACIAL_CHANNEL=1
-PORT=3000
 
+# Supabase
+SUPABASE_URL=https://xxxxx.supabase.co
+SUPABASE_SERVICE_ROLE_KEY=sb_secret_xxx
+SUPABASE_JWT_SECRET=jwt_secret_here
+
+TIMEOUT_MS=15000
 ```
 
-## ▶️ Run the server
-
-- Install dependencies:
+### Install Dependencies
 
 ```bash
 npm install
-
 ```
 
-## Run the server
+### Run Gateway
+
+```bash
+node index.js
+```
+
+**Expected output:**
+
+```yaml
+FACIAL GATEWAY STARTED
+PORT: 4000
+FACIAL_IP: 192.168.3.227
+TIMEOUT_MS: 15000
+```
+
+### Health Check
 
 ```bash
 curl http://localhost:4000/health
-
 ```
 
-## Facial Agent Setup (Job Worker)
+---
 
-## The agent lives in:
+## 🌐 API Endpoints
+
+### Door Control
 
 ```bash
-gateway/facial-agent
-
+curl -X POST http://localhost:4000/facial/door/open \
+  -H "Authorization: Bearer TOKEN"
 ```
 
-## Environment variables
+### Live Snapshot
 
-- This project uses multiple `.env` files.
+```bash
+curl http://localhost:4000/facial/events/DEVICE_ID/photo?mode=snapshot \
+  -H "Authorization: Bearer TOKEN"
+```
 
-Create `gateway/facial-agent/.env:`
+**Returns:** `image/jpeg`
 
-``` .env
-SUPABASE_URL=https://your-project.supabase.co
-SUPABASE_SERVICE_ROLE_KEY=sb_secret_xxxxxxxxxxxxxxxxx
+### Access Events List
 
-SITE_ID=uuid-from-public.sites
-AGENT_ID=uuid-from-public.agents
+```bash
+curl "http://localhost:4000/facial/events/DEVICE_ID?from=2026-01-19T00:00:00-03:00&to=2026-01-20T00:00:00-03:00" \
+  -H "Authorization: Bearer TOKEN"
+```
 
-GATEWAY_BASE_URL=http://127.0.0.1:3000
+### Event Photo Proxy
+
+Downloads image stored on device:
+
+```bash
+curl "http://localhost:4000/facial/events/DEVICE_ID/photo?url=/mnt/appdata1/userpic/SnapShot/2026/photo.jpg" \
+  -H "Authorization: Bearer TOKEN"
+```
+
+### Create User
+
+```bash
+curl -X POST http://localhost:4000/facial/user/create \
+  -H "Authorization: Bearer TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "userID": "888",
+    "userName": "John Doe",
+    "authority": 2
+  }'
+```
+
+### Update User
+
+```bash
+curl -X POST http://localhost:4000/facial/user/update \
+  -H "Authorization: Bearer TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "userID": "888",
+    "userName": "John Updated"
+  }'
+```
+
+### Delete User
+
+```bash
+curl -X POST http://localhost:4000/facial/user/delete \
+  -H "Authorization: Bearer TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "userID": "888"
+  }'
+```
+
+### Assign Card
+
+```bash
+curl -X POST http://localhost:4000/facial/card/add \
+  -H "Authorization: Bearer TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "userID": "888",
+    "cardNo": "3333333333333333"
+  }'
+```
+
+---
+
+## 📸 Face Enrollment
+
+### Requirements
+
+- JPG format
+- One face only
+- Good lighting
+- No sunglasses
+- Auto compression enabled
+- Final payload ≤ 14KB
+
+### Upload File
+
+```bash
+curl -X POST http://localhost:4000/facial/face/upload \
+  -H "Authorization: Bearer TOKEN" \
+  -F userID=777 \
+  -F file=@photo.jpg
+```
+
+### Upload Base64
+
+```bash
+curl -X POST http://localhost:4000/facial/face/uploadBase64 \
+  -H "Authorization: Bearer TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "userID": "777",
+    "photoData": "data:image/jpeg;base64,..."
+  }'
+```
+
+---
+
+## 🤖 Facial Agent (Optional)
+
+Used for job-based distributed execution.
+
+### Agent Environment Variables
+
+Create `gateway/facial-agent/.env`:
+
+```env
+SUPABASE_URL=https://xxx.supabase.co
+SUPABASE_SERVICE_ROLE_KEY=sb_secret_xxx
+
+SITE_ID=uuid
+AGENT_ID=uuid
+
+GATEWAY_BASE_URL=http://127.0.0.1:4000
 POLL_INTERVAL_MS=1500
-
 ```
 
-⚠️ `AGENT_ID` must exist in `public.agents`
-`jobs.agent_id` has a foreign key constraint.
-
-## Run the Agent
+### Run Agent
 
 ```bash
 node agent.js
-
 ```
 
-## Expected output:
-
+**Expected output:**
 
 ```yaml
 🤖 FACIAL AGENT STARTED
 SITE_ID : ...
 AGENT_ID: ...
 GATEWAY : http://127.0.0.1:4000
-POLL   : 1500 ms
-
 ```
 
-## Sending Commands (Jobs)
+---
 
-- Example: open door:
+## 📋 API Summary
 
-```sql
-insert into public.jobs (site_id, type, payload, status)
-values (
-  'SITE_UUID',
-  'open_door',
-  '{"channel": 1}'::jsonb,
-  'pending'
-);
+| Feature           | Endpoint                           | Method |
+| ----------------- | ---------------------------------- | ------ |
+| Health            | `/health`                          | GET    |
+| Open door         | `/facial/door/open`                | POST   |
+| Live snapshot     | `/facial/events/:id/photo`         | GET    |
+| Access events     | `/facial/events/:id`               | GET    |
+| Event photo       | `/facial/events/:id/photo`         | GET    |
+| Create user       | `/facial/user/create`              | POST   |
+| Update user       | `/facial/user/update`              | POST   |
+| Delete user       | `/facial/user/delete`              | POST   |
+| Assign card       | `/facial/card/add`                 | POST   |
+| Upload face file  | `/facial/face/upload`              | POST   |
+| Upload face Base64| `/facial/face/uploadBase64`        | POST   |
 
-```
-The agent will:
-- Pick the job
-- Call the gateway
-- Update status to done
-- Execute the action physically on the device
+---
 
-## Gateway API Examples
+## 🔐 Security Design
 
-## Door control
+- ✅ Devices never exposed to internet
+- ✅ Gateway holds credentials
+- ✅ JWT protected API
+- ✅ Tenant isolation via Supabase RLS
+- ✅ LAN execution supported
+- ✅ NAT friendly
+- ✅ SaaS compatible
 
-```bash
-curl -X POST http://localhost:4000/facial/door/open
+---
 
-```
+## ✅ Production Status
 
-## User-Create
+- ✅ RPC2 stable
+- ✅ Snapshot proxy stable
+- ✅ Event photos stable
+- ✅ Compression tuned
+- ✅ Multi-device routing
+- ✅ JWT protected
+- ✅ UI integrated
 
-```bash
-curl -X POST http://localhost:4000/facial/user/create \
-  -H "Content-Type: application/json" \
-  -d '{
-    "userID": "888",
-    "userName": "User 888",
-    "password": "1234",
-    "authority": 2
-  }'
+---
 
-```
+## 📝 Design Notes
 
-## Users-Get by ID
+- RPC2 session handled entirely by backend
+- No browser cookies required
+- Users, cards, and faces are independent entities
+- Automatic image preprocessing for firmware compatibility
+- Safe for Raspberry Pi / embedded gateway usage
 
-```bash
-curl http://localhost:4000/facial/user/888
+---
 
-```
-
-##User-Uptade
-```bash
-curl -X POST http://localhost:4000/facial/user/update \
-  -H "Content-Type: application/json" \
-  -d '{
-    "userID": "888",
-    "userName": "User 888 RENAMED"
-  }'
-
-  ```
-
-## User-Delete
-
-```bash
-curl -X POST http://localhost:4000/facial/user/delete \
-  -H "Content-Type: application/json" \
-  -d '{
-    "userID": "888"
-  }'
-
-```
-
-## Cards/Tags-Assign
-
-```bash
-curl -X POST http://localhost:4000/facial/card/add \
-  -H "Content-Type: application/json" \
-  -d '{
-    "userID": "888",
-    "cardNo": "3333333333333333"
-  }'
-
-```
-
-## Face enrollment (Working)
-
-```bash
-JPG format
-One person only
-Frontal face
-Good lighting
-No heavy shadows or sunglasses
-Final request size <= 14 KB
-Typical resolution 160–220 px
-
-```
-
-## Face enrollment-Upload file
-
-```bash
-curl -X POST http://localhost:4000/facial/face/upload \
-  -F userID=777 \
-  -F file=@/path/to/photo.jpg
-
-```
-
-## Face enrollment-Upload Base64
-
-```bash
-curl -X POST http://localhost:4000/facial/face/uploadBase64 \
-  -H "Content-Type: application/json" \
-  -d '{
-    "userID": "777",
-    "photoData": "data:image/jpg;base64,/9j/4AAQSkZJRgABAQ..."
-  }'
-
-```
-
-## Common erros
-
-Request length error
-Payload format not accepted by firmware
-Not only size-related
-
-Batch Process Error
-Face not detected or poor quality
-Improve lighting and face position
-
-
-## API Summary
-
-| Feature     | Endpoint                    | Method |
-| ----------- | --------------------------- | ------ |
-| Health      | `/health`                   | GET    |
-| Open door   | `/facial/door/open`         | POST   |
-| Create user | `/facial/user/create`       | POST   |
-| Get user    | `/facial/user/:userID`      | GET    |
-| Update user | `/facial/user/update`       | POST   |
-| Delete user | `/facial/user/delete`       | POST   |
-| Assign card | `/facial/card/add`          | POST   |
-| Upload face | `/facial/face/upload`       | POST   |
-| Upload face | `/facial/face/uploadBase64` | POST   |
-
-
-## Design Notes
-
-RPC2 session handled entirely by backend
-No browser cookies required
-Users, cards, and faces are independent entities
-Automatic image preprocessing for firmware compatibility
-Safe for Raspberry Pi / embedded gateway usage
-
-
-## Status
-
-RPC2 session handled entirely by backend
-No browser cookies required
-Users, cards, and faces are independent entities
-Automatic image preprocessing for firmware compatibility
-Safe for Raspberry Pi / embedded gateway usage
-
-
-## Security Notes
+## 🛡️ Security Notes
 
 - The Gateway runs only inside the local network
 - No inbound ports are required

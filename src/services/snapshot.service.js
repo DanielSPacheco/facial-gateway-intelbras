@@ -1,18 +1,12 @@
 const { runCurlDigestBuffer } = require("../clients/cgi.client");
+const { resolveTarget } = require("../utils/target.util");
 
-/**
- * Retorna JPEG (Buffer) do snapshot do facial
- * - Por enquanto: usa cfg.FACIAL_IP/USER/PASS (ENV do gateway)
- * - Depois: podemos evoluir para resolver por deviceId no DB
- */
-async function getSnapshotJpeg(cfg, { deviceId, channel }) {
-  const ip = cfg.FACIAL_IP;
-  const user = cfg.FACIAL_USER;
-  const pass = cfg.FACIAL_PASS;
+async function getSnapshotJpeg(cfg, bodyOrPayload = {}) {
+  const tcfg = resolveTarget(cfg, bodyOrPayload);
 
-  const ch = String(channel || cfg.FACIAL_CHANNEL || "1");
+  const ch = String(bodyOrPayload.channel || tcfg.FACIAL_CHANNEL || "1");
 
-  if (!ip || !user || !pass) {
+  if (!tcfg.FACIAL_IP || !tcfg.FACIAL_USER || !tcfg.FACIAL_PASS) {
     return {
       ok: false,
       error: "CONFIG_ERROR",
@@ -20,13 +14,13 @@ async function getSnapshotJpeg(cfg, { deviceId, channel }) {
     };
   }
 
-  const url = `http://${ip}/cgi-bin/snapshot.cgi?channel=${encodeURIComponent(ch)}`;
+  const url = `http://${tcfg.FACIAL_IP}/cgi-bin/snapshot.cgi?channel=${encodeURIComponent(ch)}`;
 
   const r = await runCurlDigestBuffer({
     url,
-    user,
-    pass,
-    timeoutMs: cfg.TIMEOUT_MS || 15000,
+    user: tcfg.FACIAL_USER,
+    pass: tcfg.FACIAL_PASS,
+    timeoutMs: tcfg.TIMEOUT_MS || 15000,
   });
 
   if (!r.ok) {
@@ -38,7 +32,6 @@ async function getSnapshotJpeg(cfg, { deviceId, channel }) {
     };
   }
 
-  // valida assinatura JPEG (0xFF 0xD8)
   if (!r.buffer || r.buffer.length < 2 || r.buffer[0] !== 0xff || r.buffer[1] !== 0xd8) {
     return {
       ok: false,

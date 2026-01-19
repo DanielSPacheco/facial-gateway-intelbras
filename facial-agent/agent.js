@@ -236,11 +236,18 @@ async function httpJson(url, body, timeoutMs = DEFAULT_HTTP_TIMEOUT_MS) {
 
     const text = await resp.text();
     let parsed;
-    try {
-      parsed = JSON.parse(text);
-    } catch {
-      parsed = { ok: false, error: "NON_JSON_RESPONSE", raw: text };
-    }
+
+        try {
+          parsed = JSON.parse(text);
+      } catch {
+          parsed = {
+          ok: false,
+          error: "NON_JSON_RESPONSE",
+          http_status: resp.status,
+          raw: text?.slice(0, 500),
+        };
+      }
+
 
     if (typeof parsed.ok === "undefined") parsed.ok = resp.ok;
     if (!parsed.ok) parsed.http_status = resp.status;
@@ -403,6 +410,17 @@ async function main() {
       }
 
       const deviceId = job?.payload?.device_id || job?.payload?.deviceId || null;
+
+      if (!deviceId) {
+          const info = await failOrRetryJob(
+            job,
+            "DEVICE_ID_REQUIRED",
+            { payload: job.payload }
+          );
+          console.warn(`[JOB] ${job.id} missing device_id`);
+          continue;
+        }
+
 
       // target que o gateway vai usar
       let target = null;

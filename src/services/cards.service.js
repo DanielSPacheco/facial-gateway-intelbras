@@ -1,26 +1,35 @@
 const { rpc2Login, rpc2Call } = require("../clients/rpc2.client");
+const { resolveTarget } = require("../utils/target.util");
 
-async function assignCard(cfg, { userID, cardNo }) {
+async function login(cfg, bodyOrPayload) {
+  const tcfg = resolveTarget(cfg, bodyOrPayload);
+  return rpc2Login({
+    ip: tcfg.FACIAL_IP,
+    user: tcfg.FACIAL_USER,
+    pass: tcfg.FACIAL_PASS,
+    timeoutMs: tcfg.TIMEOUT_MS,
+  });
+}
+
+async function assignCard(cfg, bodyOrPayload = {}) {
+  const { userID, cardNo } = bodyOrPayload;
+
   if (!userID || !cardNo) {
     return { ok: false, error: { message: "Campos obrigatórios: userID, cardNo" } };
   }
 
-  const session = await rpc2Login({
-    ip: cfg.FACIAL_IP,
-    user: cfg.FACIAL_USER,
-    pass: cfg.FACIAL_PASS,
-    timeoutMs: cfg.TIMEOUT_MS,
-  });
+  const tcfg = resolveTarget(cfg, bodyOrPayload);
+  const session = await login(cfg, bodyOrPayload);
 
   const result = await rpc2Call({
-    ip: cfg.FACIAL_IP,
+    ip: tcfg.FACIAL_IP,
     session,
     method: "AccessCard.insertMulti",
     params: {
       CardList: [{ CardNo: String(cardNo), UserID: String(userID) }],
     },
     id: 3100,
-    timeoutMs: cfg.TIMEOUT_MS,
+    timeoutMs: tcfg.TIMEOUT_MS,
   });
 
   if (result?.result !== true) {
@@ -36,26 +45,23 @@ async function assignCard(cfg, { userID, cardNo }) {
   };
 }
 
-async function removeCard(cfg, { cardNo }) {
+async function removeCard(cfg, bodyOrPayload = {}) {
+  const { cardNo } = bodyOrPayload;
+
   if (!cardNo) {
     return { ok: false, error: { message: "Campo obrigatório: cardNo" } };
   }
 
-  const session = await rpc2Login({
-    ip: cfg.FACIAL_IP,
-    user: cfg.FACIAL_USER,
-    pass: cfg.FACIAL_PASS,
-    timeoutMs: cfg.TIMEOUT_MS,
-  });
+  const tcfg = resolveTarget(cfg, bodyOrPayload);
+  const session = await login(cfg, bodyOrPayload);
 
-  // ✅ O método que você validou via curl
   const result = await rpc2Call({
-    ip: cfg.FACIAL_IP,
+    ip: tcfg.FACIAL_IP,
     session,
     method: "AccessCard.removeMulti",
     params: { CardNoList: [String(cardNo)] },
     id: 3101,
-    timeoutMs: cfg.TIMEOUT_MS,
+    timeoutMs: tcfg.TIMEOUT_MS,
   });
 
   if (result?.result !== true) {

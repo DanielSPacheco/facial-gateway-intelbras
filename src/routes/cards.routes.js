@@ -16,15 +16,20 @@ module.exports = (cfg) => {
         });
       }
 
-      const r = await assignCard(cfg, { userID, cardNo });
+      // ✅ passa o body inteiro para permitir target
+      const r = await assignCard(cfg, req.body || {});
       return res.status(r.ok ? 200 : 502).json(r);
     } catch (e) {
-      return res.status(500).json({ ok: false, error: "INTERNAL_ERROR", details: e?.message || String(e) });
+      return res.status(500).json({
+        ok: false,
+        error: "INTERNAL_ERROR",
+        details: e?.message || String(e),
+      });
     }
   });
 
   // POST /facial/card/delete
-  // body: { cardNo: "1111101010" }
+  // body: { cardNo: "...", target?: {...} }
   router.post("/delete", async (req, res) => {
     try {
       const { cardNo } = req.body || {};
@@ -36,10 +41,15 @@ module.exports = (cfg) => {
         });
       }
 
-      const r = await removeCard(cfg, { cardNo });
+      // ✅ passa o body inteiro para permitir target
+      const r = await removeCard(cfg, req.body || {});
       return res.status(r.ok ? 200 : 502).json(r);
     } catch (e) {
-      return res.status(500).json({ ok: false, error: "INTERNAL_ERROR", details: e?.message || String(e) });
+      return res.status(500).json({
+        ok: false,
+        error: "INTERNAL_ERROR",
+        details: e?.message || String(e),
+      });
     }
   });
 

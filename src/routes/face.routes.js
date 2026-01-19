@@ -5,15 +5,27 @@ const { uploadFaceFile, uploadFaceBase64 } = require("../services/face.service")
 module.exports = (cfg) => {
   const router = express.Router();
 
-  // upload em memória (5MB)
   const upload = multer({
     storage: multer.memoryStorage(),
     limits: { fileSize: 5 * 1024 * 1024 },
   });
 
+  function parseTargetMaybe(body) {
+    if (!body) return null;
+    if (body.target && typeof body.target === "object") return body.target;
+    if (typeof body.target === "string") {
+      try {
+        return JSON.parse(body.target);
+      } catch {
+        return null;
+      }
+    }
+    return null;
+  }
+
   /**
    * POST /facial/face/upload
-   * multipart/form-data: userID + file
+   * multipart/form-data: userID + file (+ target opcional)
    */
   router.post("/upload", upload.single("file"), async (req, res) => {
     try {
@@ -38,14 +50,17 @@ module.exports = (cfg) => {
         });
       }
 
-      const r = await uploadFaceFile(cfg, { userID, imageBuffer: file.buffer });
+      const target = parseTargetMaybe(req.body);
+
+      const r = await uploadFaceFile(cfg, {
+        userID,
+        imageBuffer: file.buffer,
+        ...(target ? { target } : {}),
+      });
 
       if (!r.ok) {
-        // erros de tamanho/validação → 413, resto → 502
         const status =
-          r.error === "REQUEST_TOO_LARGE" || r.error === "IMAGE_TOO_LARGE"
-            ? 413
-            : 502;
+          r.error === "REQUEST_TOO_LARGE" || r.error === "IMAGE_TOO_LARGE" ? 413 : 502;
         return res.status(status).json(r);
       }
 
@@ -61,7 +76,7 @@ module.exports = (cfg) => {
 
   /**
    * POST /facial/face/uploadBase64
-   * JSON: { userID: "002", photoData: "data:image/jpg;base64,..." OR "<base64 puro>" }
+   * JSON: { userID, photoData, target? }
    */
   router.post("/uploadBase64", async (req, res) => {
     try {
@@ -77,11 +92,11 @@ module.exports = (cfg) => {
         });
       }
 
-      const r = await uploadFaceBase64(cfg, { userID, photoData });
+      // passa body inteiro para permitir target
+      const r = await uploadFaceBase64(cfg, req.body || {});
 
       if (!r.ok) {
-        const status =
-          r.error === "REQUEST_TOO_LARGE" ? 413 : 502;
+        const status = r.error === "REQUEST_TOO_LARGE" ? 413 : 502;
         return res.status(status).json(r);
       }
 

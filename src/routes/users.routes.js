@@ -5,43 +5,86 @@ module.exports = (cfg) => {
   const router = express.Router();
 
   router.get("/:userID", async (req, res) => {
-    const r = await getUser(cfg, req.params.userID);
-    res.json(r);
+    try {
+      const r = await getUser(cfg, { userID: req.params.userID });
+      return res.json(r);
+    } catch (e) {
+      console.error("[user.get] error:", e);
+      return res.status(500).json({
+        ok: false,
+        error: "INTERNAL_ERROR",
+        details: e?.message || String(e),
+      });
+    }
   });
 
   router.post("/create", async (req, res) => {
-    const { userID, userName, password, authority } = req.body || {};
-    if (!userID || !userName || !password) {
-      return res.status(400).json({
+    try {
+      const { userID, userName } = req.body || {};
+
+      if (!userID || !userName) {
+        return res.status(400).json({
+          ok: false,
+          error: "Campos obrigatórios: userID, userName",
+        });
+      }
+
+      const r = await createUser(cfg, req.body || {});
+      return res.status(r.ok ? 200 : 502).json(r);
+    } catch (e) {
+      console.error("[user.create] error:", e);
+      return res.status(500).json({
         ok: false,
-        error: "Campos obrigatórios: userID, userName, password",
-        example: { userID: "888", userName: "Joao", password: "1234", authority: 2 },
+        error: "INTERNAL_ERROR",
+        details: e?.message || String(e),
       });
     }
-    const r = await createUser(cfg, { userID, userName, password, authority });
-    return res.status(r.ok ? 200 : 502).json(r);
   });
 
   router.post("/update", async (req, res) => {
-    const { userID, userName } = req.body || {};
-    if (!userID || !userName) {
-      return res.status(400).json({
+    try {
+      const { userID } = req.body || {};
+
+      if (!userID) {
+        return res.status(400).json({
+          ok: false,
+          error: "Campo obrigatório: userID",
+        });
+      }
+
+      const r = await updateUser(cfg, req.body || {});
+      return res.status(r.ok ? 200 : 502).json(r);
+    } catch (e) {
+      console.error("[user.update] error:", e);
+      return res.status(500).json({
         ok: false,
-        error: "Campos obrigatórios: userID, userName",
-        example: { userID: "888", userName: "Usuario 888 RENOMEADO" },
+        error: "INTERNAL_ERROR",
+        details: e?.message || String(e),
       });
     }
-    const r = await updateUser(cfg, { userID, userName });
-    return res.status(r.ok ? 200 : 502).json(r);
   });
 
   router.post("/delete", async (req, res) => {
-    const { userID } = req.body || {};
-    if (!userID) {
-      return res.status(400).json({ ok: false, error: "Campos obrigatórios: userID", example: { userID: "888" } });
+    try {
+      const { userID } = req.body || {};
+
+      if (!userID) {
+        return res.status(400).json({
+          ok: false,
+          error: "Campos obrigatórios: userID",
+        });
+      }
+
+      const r = await deleteUser(cfg, req.body || {});
+      return res.status(r.ok ? 200 : 502).json(r);
+    } catch (e) {
+      console.error("[user.delete] error:", e);
+      return res.status(500).json({
+        ok: false,
+        error: "INTERNAL_ERROR",
+        details: e?.message || String(e),
+      });
     }
-    const r = await deleteUser(cfg, { userID });
-    return res.status(r.ok ? 200 : 502).json(r);
   });
 
   return router;
